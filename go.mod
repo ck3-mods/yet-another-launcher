@@ -1,6 +1,6 @@
-module github.com/ck3-mods/yet-anotherlauncher
+module github.com/ck3-mods/yet-another-launcher
 
-go 1.17
+go 1.18
 
 require fyne.io/fyne/v2 v2.1.2
 
