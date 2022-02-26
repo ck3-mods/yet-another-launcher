@@ -2,9 +2,11 @@ package mod_manager
 
 import (
 	"fmt"
+	"os"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/storage"
+	"github.com/ck3-mods/yet-another-launcher/ck3_parser"
 )
 
 type Mod struct {
@@ -67,6 +69,11 @@ func getModFolders(modsFolderUri fyne.URI) (modFolders []fyne.URI, err error) {
 func ModList(modFolderUri fyne.URI) (modList []Mod, err error) {
 	modFolders, err := getModFolders(modFolderUri)
 	for _, modFolder := range modFolders {
+		if modFolder.Extension() == ".mod" {
+			file, _ := os.Open(modFolder.Path())
+			tokens := ck3_parser.Lex(file)
+			fmt.Printf("ModList token : %v\n", <-tokens)
+		}
 		modData, modDataErr := getModData(modFolder)
 		if modDataErr != nil {
 			// We just ignore the data on error
