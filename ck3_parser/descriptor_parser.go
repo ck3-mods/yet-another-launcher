@@ -1,7 +1,6 @@
 package ck3_parser
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -83,22 +82,14 @@ func parse(reader io.Reader) (*ModDescriptor, error) {
 		return nil, err
 	}
 
-	////////////////////////////////////////////////////////////////
-	// Pretty print the parse tree
-	var buf bytes.Buffer
-	err := p.root.pretty(&buf, "")
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("Parse tree\n%s", buf.String())
+	// evaluate the parsing tree and cast the result to a map
 	evalObj, _ := p.root.eval()
 	evalMap, ok := evalObj.(map[string]interface{}) // cast the value to get the map{key: value} child
 	if !ok {
 		log.Printf("Error in the type of the parser evaluation: %v\n", evalMap)
 	}
-	fmt.Printf("Eval object:\n%v\n", evalMap)
-	////////////////////////////////////////////////////////////////
 
+	// convert the map to the ModDescriptor data structure
 	modDescriptor, err := convert(evalMap)
 	if err != nil {
 		return nil, err
@@ -109,18 +100,14 @@ func parse(reader io.Reader) (*ModDescriptor, error) {
 func convert(valueMap map[string]interface{}) (*ModDescriptor, error) {
 	modDescriptor := ModDescriptor{}
 	for key, value := range valueMap {
-		log.Printf("Key: %v, Value: %v", key, value)
 		switch key {
 		case "name":
-			log.Print("name found")
 			stringValue := castString(value)
 			modDescriptor.Name = stringValue
 		case "path":
-			log.Print("path found")
 			stringValue := castString(value)
 			modDescriptor.Path = stringValue
 		case "remote_file_id":
-			log.Print("remote id found")
 			stringValue := castString(value)
 			numberValue, err := strconv.Atoi(stringValue)
 			if err != nil {
@@ -128,16 +115,12 @@ func convert(valueMap map[string]interface{}) (*ModDescriptor, error) {
 			}
 			modDescriptor.Remote_file_id = numberValue
 		case "supported_version":
-			log.Print("supported version found")
 			stringValue := castString(value)
 			modDescriptor.Supported_version = stringValue
 		case "tags":
-			log.Print("tags found")
 			stringArray := castStringArray(value)
-			log.Printf("tags: %v\n", stringArray)
 			modDescriptor.Tags = stringArray
 		case "version":
-			log.Print("version found")
 			stringValue := castString(value)
 			modDescriptor.Version = stringValue
 		default:
