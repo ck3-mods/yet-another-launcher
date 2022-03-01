@@ -66,7 +66,8 @@ func ModList(modFolderUri fyne.URI) (modList []Mod, err error) {
 			if err != nil {
 				fmt.Printf("ModDescriptor error: %v\n", err)
 			}
-			fmt.Printf("ModDescriptor : %v\n", modDescriptor)
+			fmt.Printf("ModDescriptor name: %v\n", modDescriptor.Name)
+			fmt.Printf("ModDescriptor tags: %s\n", modDescriptor.Tags)
 		}
 		modData, modDataErr := getModData(modFolder)
 		if modDataErr != nil {
