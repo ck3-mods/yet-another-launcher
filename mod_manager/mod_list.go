@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/storage"
+	"github.com/ck3-mods/yet-another-launcher/ck3_parser"
 )
 
 type Mod struct {
@@ -50,23 +51,24 @@ func getModFolders(modsFolderUri fyne.URI) (modFolders []fyne.URI, err error) {
 		fmt.Printf("ModList Error: URI = %v\n", modsFolderUri)
 		return
 	}
-	// modsFolderFiles, err := modsFolderListable.List()
 	modFolders, err = modsFolderListable.List()
 	if err != nil {
 		return
 	}
-	// for _, file := range modsFolderFiles {
-	// 	fileInfo, _ := os.Stat(file.Path())
-	// 	if fileInfo.IsDir() {
-	// 		modFolders = append(modFolders, file)
-	// 	}
-	// }
 	return
 }
 
 func ModList(modFolderUri fyne.URI) (modList []Mod, err error) {
 	modFolders, err := getModFolders(modFolderUri)
 	for _, modFolder := range modFolders {
+		if modFolder.Extension() == ".mod" {
+			modDescriptor, err := ck3_parser.ReadDescriptorFile(modFolder)
+			if err != nil {
+				fmt.Printf("ModDescriptor error: %v\n", err)
+			}
+			fmt.Printf("ModDescriptor name: %v\n", modDescriptor.Name)
+			fmt.Printf("ModDescriptor tags: %s\n", modDescriptor.Tags)
+		}
 		modData, modDataErr := getModData(modFolder)
 		if modDataErr != nil {
 			// We just ignore the data on error
