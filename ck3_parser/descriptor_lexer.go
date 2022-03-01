@@ -54,18 +54,14 @@ func (t tokenType) String() string {
 		return "error"
 	case tKey:
 		return "identifier key"
-	case tNumber:
-		return "number"
 	case tPath:
 		return "folder path"
-	case tString:
-		return "string"
+	case tValue:
+		return "value"
 	case tValueEnd:
 		return "end of value"
 	case tValueStart:
 		return "start of value"
-	case tVersion:
-		return "version number"
 	default:
 		panic(fmt.Sprintf("Descriptor lexer error: unknown token type"))
 		// TODO: Throw error if we can have to invalid token types? Maybe we don't want to crash the program on bad lexing
@@ -83,11 +79,9 @@ const (
 	tError                       // a stored lex error
 	tKey                         // an identifier: name, version, tags, etc. Followed by =
 	tPath                        // a system folder path: "mod/mymod", "C:/users/me/Paradox/CK3/mod/mymod", etc.
-	tNumber                      // a number
-	tString                      // a text string
+	tValue                       // a value
 	tValueEnd                    // "
 	tValueStart                  // "
-	tVersion                     // an version number: uses semantic versioning (MAJOR.MINOR.PATCH). Wildcards (*) may be used to define a range of versions.
 )
 
 // toke describes a token with its type and its value
@@ -100,7 +94,7 @@ type token struct {
 type stateFn func(*lexer) stateFn
 
 // `lex` is the main function. It creates a new lexer, runs it and returns the `out` send-only channel for the parser to process
-func Lex(inputReader io.Reader) chan token {
+func lex(inputReader io.Reader) chan token {
 	l := lexer{
 		in:     bufio.NewReader(inputReader),
 		out:    make(chan token),
@@ -127,12 +121,12 @@ type lexer struct {
 // If yes, it keeps the rune by adding it to the read buffer and returns true
 // If not, it un-reads the rune and returns false
 func (l *lexer) accept(validRunes string) bool {
-	rune := l.next()
-	if strings.ContainsRune(validRunes, rune) {
-		l.keep(rune)
+	r := l.next()
+	if strings.ContainsRune(validRunes, r) {
+		l.keep(r)
 		return true
 	} else {
-		l.unread(rune)
+		l.unread(r)
 		return false
 	}
 }
@@ -200,6 +194,13 @@ func (l *lexer) run() {
 	}
 }
 
+// `skipSpaces` skips all space runes i.e. '\n', '\r', '\t', ' ', ...
+func (l *lexer) skipSpaces() {
+	for ; unicode.IsSpace(l.peek()); l.next() {
+		// we peek at the next rune and skip it if empty
+	}
+}
+
 // unread adds the current rune to the backup buffer
 func (l *lexer) unread(r rune) {
 	l.backup = append(l.backup, r)
@@ -210,8 +211,23 @@ func (l *lexer) unread(r rune) {
 ////////////////////////////////////////////////////////////////
 
 // `lexArray` lexes the first value and keep lexing values until we meet the end curly bracket '}'
-// func lexArray() stateFn {
-// }
+func lexArray(l *lexer) stateFn {
+	// skip empty
+	r := l.next()
+	switch {
+	case r == '"':
+		return lexValue(l, lexArray) // we call lexValue but expect it to return in the value array
+	case r == '}':
+		l.keep(r)
+		l.emit(tArrayEnd)
+		return lexRoot
+	case unicode.IsSpace(r):
+		l.skipSpaces()
+		return lexArray
+	default:
+		return lexErrorf("unexpected rune in lexArray: %c", r)
+	}
+}
 
 // `lexComment` lexes a comment until it meets a new line '\n'
 func lexComment(l *lexer) stateFn {
@@ -240,9 +256,8 @@ func lexKey(l *lexer) stateFn {
 	switch r := l.next(); r {
 	case ' ', '\t', '=':
 		l.emit(tKey)
-		// DEBUG: this should return to lexRoot
-		return nil
-		// return lexRoot
+		l.unread(r)
+		return lexRoot
 	case eof:
 		l.emit(tKey)
 		return nil
@@ -253,6 +268,7 @@ func lexKey(l *lexer) stateFn {
 }
 
 func lexRoot(l *lexer) stateFn {
+	// skip empty
 	r := l.next()
 	switch {
 	case r == eof:
@@ -260,41 +276,52 @@ func lexRoot(l *lexer) stateFn {
 	case r == '#':
 		return lexComment
 	case r == '=': // end the lexer for now TODO: remove this and handle value
-		return nil
+		l.keep(r)
+		l.emit(tDefinition)
+		return lexRightHandSide
 	case unicode.IsLetter(r):
 		l.keep(r)
 		return lexKey
-	// case r == '=':
-	// 	return lexRightHandSide(r)
-	// case unicode.IsSpace(r):
-	// return skipEmpty
-	// case unicode.IsPrint(r):
-	// return lexKey(r)
+	case unicode.IsSpace(r):
+		l.skipSpaces()
+		return lexRoot
 	default:
 		return lexErrorf("unexpected rune in lexRoot: %c", r)
 	}
 }
 
 // `lexRightHandSide` lexes the right hand side of a definition. It can either be a value or an array of values
-// func lexRightHandSide() stateFn {
-// 	// skip whitespaces and read next rune
-// 	// if '"" then lex the value
-// 	// if '{" then lex the value array
+func lexRightHandSide(l *lexer) stateFn {
+	// skip whitespaces and read next rune
+	// if '"" then lex the value
+	// if '{" then lex the value array
 
-// 	return func(l *lexer) stateFn {
-// 		switch r := l.next(); r {
-// 		case '"':
-// 			l.next()
-// 			return lexValue()
-// 		case '{':
-// 			l.next()
-// 			// return lexArray()
-// 		default:
-// 			return lexErrorf("unexpected rune in lexRightHandSide: %c", r)
-// 		}
-// 	}
-// }
+	r := l.next()
+	switch {
+	case r == '"':
+		return lexValue(l, lexRoot)
+	case r == '{':
+		l.keep(r)
+		l.emit(tArrayStart)
+		return lexArray
+	case unicode.IsSpace(r): // we keep skipping whitespaces
+		return lexRightHandSide
+	default:
+		return lexErrorf("unexpected rune in lexRightHandSide: %c", r)
+	}
+}
 
 // `lexValue` lexes an entire value until we meet the end double quote '""
-// func lexValue() stateFn {
-// }
+func lexValue(l *lexer, caller stateFn) stateFn {
+	r := l.next()
+	switch {
+	case r == '"': // we emit the value to the token channel, then emit the tValueEnd token
+		l.emit(tValue)
+		return caller
+	case unicode.IsGraphic(r):
+		l.keep(r)
+		return lexValue(l, caller)
+	default:
+		return lexErrorf("unexpected rune in lexValue: %c", r)
+	}
+}
