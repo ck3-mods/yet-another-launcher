@@ -18,8 +18,8 @@ from PyQt6.QtWidgets import (
 )
 
 
-def job_fn(queue: Queue):
-    print("Running job_fn")
+def job_fn(queue: Queue, argument1, argument2):
+    print(f"Running job_fn with args: {argument1} | {argument2}")
     delay = random.random() * 2  # Random delay value.
     time.sleep(delay)
     queue.put(f"job delay: {delay}")
@@ -47,12 +47,14 @@ class Runner(QRunnable):
 
     """
 
-    def __init__(self, job: Callable, queue: Queue):
+    def __init__(self, queue: Queue, job_fn: Callable, *job_args, **job_kwargs):
         super().__init__()
         self.MAX_WORKERS = 10
         self.runner_id = uuid.uuid4().hex
         self.signals = WorkerSignals()
-        self.job = job
+        self.job_fn = job_fn
+        self.job_args = (queue,) + job_args
+        self.job_kwargs = job_kwargs
         self.queue = queue
 
     @pyqtSlot()
@@ -60,7 +62,10 @@ class Runner(QRunnable):
         with concurrent.futures.ProcessPoolExecutor(
             max_workers=self.MAX_WORKERS
         ) as executor:
-            job_futures = {executor.submit(self.job, self.queue) for i in range(10)}
+            job_futures = {
+                executor.submit(self.job_fn, *self.job_args, *self.job_kwargs)
+                for _ in range(10)
+            }
 
             for future in job_futures:
                 print(f"future: {future}")
@@ -136,7 +141,7 @@ class MainWindow(QMainWindow):
 
     def execute(self):
         # Execute
-        runner = Runner(job_fn, self.process_queue)
+        runner = Runner(self.process_queue, job_fn, "test1", 2)
         listener = Listener(self.process_queue)
         self.threadpool.start(runner)
         self.threadpool.start(listener)
