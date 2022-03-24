@@ -1,8 +1,8 @@
 import concurrent.futures
-from multiprocessing import Queue
-from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
 from typing import Callable
-import uuid
+from uuid import uuid4
+
+from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
 
 
 class RunnerSignals(QObject):
@@ -14,7 +14,7 @@ class RunnerSignals(QObject):
 
     """
 
-    running = pyqtSignal(str)
+    results = pyqtSignal(object)
     progress = pyqtSignal(str, int)
     finished = pyqtSignal(bool)
 
@@ -22,7 +22,7 @@ class RunnerSignals(QObject):
 class Runner(QRunnable):
     """Runner thread. Inherits from QRunnable to handle runner thread setup, signals and wrap-up."""
 
-    def __init__(self, queue: Queue, job_fn: Callable, *job_args, **job_kwargs):
+    def __init__(self, job_fn: Callable, *job_args, **job_kwargs):
         """
         Initialize the runner with a function, its arguments (or dict args),
         and a queue to store the results in the main thread on the main process
@@ -41,12 +41,11 @@ class Runner(QRunnable):
 
         super().__init__()
         self.MAX_WORKERS = 10
-        self.runner_id = uuid.uuid4().hex
+        self.id = uuid4().hex
         self.signals = RunnerSignals()
         self.job_fn = job_fn
-        self.job_args = (queue,) + job_args
+        self.job_args = job_args
         self.job_kwargs = job_kwargs
-        self.queue = queue
 
     @pyqtSlot()
     def run(self):
@@ -58,14 +57,8 @@ class Runner(QRunnable):
                 for _ in range(10)
             }
 
-            for future in job_futures:
-                print(f"future: {future}")
+            for job_future in concurrent.futures.as_completed(job_futures):
+                result = job_future.result()
+                self.signals.results.emit(f"ran job with delay: {result}")
 
-        while job_futures:
-            done, job_futures = concurrent.futures.wait(
-                job_futures, return_when=concurrent.futures.FIRST_COMPLETED
-            )
-            for job_future in done:
-                print(f"future result: {job_future.result()}")
-        self.queue.put("done")
         self.signals.finished.emit(True)

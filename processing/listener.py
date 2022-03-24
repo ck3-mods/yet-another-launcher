@@ -1,6 +1,10 @@
 from multiprocessing import Queue
 from threading import Event
+from uuid import uuid4
+
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
+
+QUEUE_DONE = "queue_done"
 
 
 class ListenerSignals(QObject):
@@ -29,6 +33,7 @@ class Listener(QRunnable):
 
         """
         super().__init__()
+        self.id = uuid4().hex
         self.signals = ListenerSignals()
         self.close_event = Event()
         self.queue = queue
@@ -38,12 +43,15 @@ class Listener(QRunnable):
         """Loop through the queue until we receive a message that indicates the jobs have all been processed"""
         self.signals.running.emit(True)
         while not self.close_event.is_set():
-            self.close_event.wait(150)
-            value = self.queue.get()
-            if value == "queue_done":
+            self.close_event.wait(0.150)
+            try:
+                value = self.queue.get()
+                print(f"Queue value: {value}")
+                self.queue.task_done()
+                if value == QUEUE_DONE:
+                    break
+            except:
                 break
-            print(f"Queue value: {value}")
-            self.queue.task_done()
         print("Listener run(): loop exit")
         self.signals.running.emit(False)
         self.signals.finished.emit(True)
