@@ -59,6 +59,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(mainWidget)
         self.show()
 
+    def closeEvent(self, event):
+        print("closeEvent called")
+        self.listener.stop()
+        event.accept()
+
     def click_me(self):
         print("I'm clicked")
 

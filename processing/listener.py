@@ -1,4 +1,5 @@
 from multiprocessing import Queue
+from threading import Event
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
 
 
@@ -29,17 +30,27 @@ class Listener(QRunnable):
         """
         super().__init__()
         self.signals = ListenerSignals()
+        self.close_event = Event()
         self.queue = queue
 
     @pyqtSlot()
     def run(self):
         """Loop through the queue until we receive a message that indicates the jobs have all been processed"""
         self.signals.running.emit(True)
-        while True:
+        while not self.close_event.is_set():
+            self.close_event.wait(150)
             value = self.queue.get()
             if value == "queue_done":
                 break
             print(f"Queue value: {value}")
             self.queue.task_done()
+        print("Listener run(): loop exit")
         self.signals.running.emit(False)
         self.signals.finished.emit(True)
+
+    def start(self):
+        self.run()
+
+    def stop(self):
+        self.close_event.set()
+        print("Listener stop()")
