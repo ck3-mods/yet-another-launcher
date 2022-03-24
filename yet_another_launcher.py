@@ -2,11 +2,11 @@ import concurrent.futures
 import random
 import sys
 import time
-from typing import Callable
-import uuid
 from multiprocessing import Manager, Queue
+from processing.listener import Listener
+from processing.runner import Runner
 
-from PyQt6.QtCore import QObject, QRunnable, QSize, QThreadPool, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QRunnable, QSize, QThreadPool, pyqtSlot
 from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
@@ -26,83 +26,6 @@ def job_fn(queue: Queue, argument1, argument2):
     return delay
 
 
-class WorkerSignals(QObject):
-    """
-    Defines the signals available from a running worker thread.
-
-    progress
-        int progress complete,from 0-100
-
-    """
-
-    running = pyqtSignal(str)
-    progress = pyqtSignal(str, int)
-    finished = pyqtSignal(bool)
-
-
-class Runner(QRunnable):
-    """
-    Worker thread
-    Inherits from QRunnable to handle worker thread setup, signals and wrap-up.
-
-    """
-
-    def __init__(self, queue: Queue, job_fn: Callable, *job_args, **job_kwargs):
-        super().__init__()
-        self.MAX_WORKERS = 10
-        self.runner_id = uuid.uuid4().hex
-        self.signals = WorkerSignals()
-        self.job_fn = job_fn
-        self.job_args = (queue,) + job_args
-        self.job_kwargs = job_kwargs
-        self.queue = queue
-
-    @pyqtSlot()
-    def run(self):
-        with concurrent.futures.ProcessPoolExecutor(
-            max_workers=self.MAX_WORKERS
-        ) as executor:
-            job_futures = {
-                executor.submit(self.job_fn, *self.job_args, *self.job_kwargs)
-                for _ in range(10)
-            }
-
-            for future in job_futures:
-                print(f"future: {future}")
-
-        while job_futures:
-            done, job_futures = concurrent.futures.wait(
-                job_futures, return_when=concurrent.futures.FIRST_COMPLETED
-            )
-            for job_future in done:
-                print(f"future result: {job_future.result()}")
-        self.queue.put("done")
-        self.signals.finished.emit(True)
-
-
-class Listener(QRunnable):
-    """
-    Worker thread
-    Inherits from QRunnable to handle worker thread setup, signals and wrap-up.
-
-    """
-
-    def __init__(self, queue: Queue):
-        super().__init__()
-        self.signals = WorkerSignals()
-        self.queue = queue
-
-    @pyqtSlot()
-    def run(self):
-        while True:
-            value = self.queue.get()
-            if value == "done":
-                break
-            print(f"Queue value: {value}")
-            self.queue.task_done()
-        self.signals.finished.emit(True)
-
-
 # Describe the main Qt windows for the YAL application
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
@@ -113,7 +36,7 @@ class MainWindow(QMainWindow):
 
         workers_layout = QVBoxLayout()
         start_button = QPushButton("START IT UP")
-        click_me_button = QPushButton("Click me")
+        click_me_button = QPushButton("Click me, I'm not frozen")
         # Progress bar
         self.worker_progress = QProgressBar()
         start_button.pressed.connect(self.execute)
@@ -142,9 +65,9 @@ class MainWindow(QMainWindow):
     def execute(self):
         # Execute
         runner = Runner(self.process_queue, job_fn, "test1", 2)
-        listener = Listener(self.process_queue)
+        self.listener = Listener(self.process_queue)
         self.threadpool.start(runner)
-        self.threadpool.start(listener)
+        self.threadpool.start(self.listener)
 
     def update_progress(self, progress):
         self.worker_progress.setValue(progress)
